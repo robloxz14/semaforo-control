@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Painel de Controle - Semáforo</title>
+  <style>
+    /* Estilo geral simulando a tela de um aplicativo */
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #121214;
+      color: #e1e1e6;
+      text-align: center;
+      padding: 20px;
+      margin: 0;
+      user-select: none;
+    }
+
+    h1 {
+      font-size: 22px;
+      letter-spacing: 1px;
+      margin-top: 10px;
+      color: #04d361;
+    }
+
+    /* Botão de Conexão USB no topo */
+    .btn-conectar {
+      background-color: #202024;
+      color: #a8a8b3;
+      border: 2px solid #323238;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: bold;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-bottom: 25px;
+      transition: all 0.2s;
+    }
+    .btn-conectar:active {
+      background-color: #17171a;
+      border-color: #04d361;
+      color: #fff;
+    }
+
+    /* Estrutura do Semáforo (estilo a carcaça preta de um semáforo real) */
+    .semaforo-container {
+      background-color: #202024;
+      border: 4px solid #29292e;
+      border-radius: 35px;
+      width: 130px;
+      margin: 0 auto 30px auto;
+      padding: 25px 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
+    }
+
+    /* Estilo dos Botões dos Leds (Redondos com efeito de brilho desligado) */
+    .led-btn {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      border: 5px solid #121214;
+      cursor: pointer;
+      transition: transform 0.1s, box-shadow 0.2s;
+      opacity: 0.4; /* Efeito de desligado por padrão */
+    }
+
+    /* Cores quando apagados/desligados */
+    .red { background-color: #7a1f1f; box-shadow: inset 0 0 15px rgba(0,0,0,0.8); }
+    .yellow { background-color: #8a6d00; box-shadow: inset 0 0 15px rgba(0,0,0,0.8); }
+    .green { background-color: #135c31; box-shadow: inset 0 0 15px rgba(0,0,0,0.8); }
+
+    /* Cores quando acesos (Mais claros e brilhantes) */
+    .red.ativo { background-color: #ff4d4d; opacity: 1; box-shadow: 0 0 25px #ff4d4d; }
+    .yellow.ativo { background-color: #ffcc00; opacity: 1; box-shadow: 0 0 25px #ffcc00; }
+    .green.ativo { background-color: #04d361; opacity: 1; box-shadow: 0 0 25px #04d361; }
+
+    .led-btn:active {
+      transform: scale(0.92);
+    }
+
+    /* Container inferior para o botão de sirene */
+    .controle-inferior {
+      margin-top: 10px;
+    }
+
+    /* Botão da Sirene / Pisca Alerta */
+    .sirene-btn {
+      padding: 16px 32px;
+      font-size: 16px;
+      font-weight: bold;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      color: white;
+      background-color: #ff4d4d; /* Inicialmente Vermelho (OFF) */
+      box-shadow: 0 6px 15px rgba(255, 77, 77, 0.2);
+      transition: all 0.2s ease;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    /* Quando a sirene estiver ativada, muda para Verde (ON) */
+    .sirene-btn.ativo {
+      background-color: #04d361;
+      box-shadow: 0 6px 15px rgba(4, 211, 97, 0.4);
+    }
+
+    .sirene-btn:active {
+      transform: scale(0.96);
+    }
+  </style>
+</head>
+<body>
+
+  <button class="btn-conectar" onclick="conectarUSB()">🔌 CONECTAR ARDUINO</button>
+  
+  <h1>🚥 CONTROLE DE SINAL</h1>
+
+  <!-- Caixa que agrupa as luzes igual a um semáforo de controle -->
+  <div class="semaforo-container">
+    <div id="btnRed" class="led-btn red" onclick="enviarComando('r', 'btnRed')"></div>
+    <div id="btnYellow" class="led-btn yellow" onclick="enviarComando('y', 'btnYellow')"></div>
+    <div id="btnGreen" class="led-btn green" onclick="enviarComando('g', 'btnGreen')"></div>
+  </div>
+
+  <div class="controle-inferior">
+    <button id="btnSirene" class="sirene-btn" onclick="toggleSirene()">🚨 PISCA ALERTA: OFF</button>
+  </div>
+
+  <script>
+    let port;
+    let writer;
+    let sireneAtiva = false;
+
+    async function conectarUSB() {
+      try {
+        port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 9600 });
+        writer = port.writable.getWriter();
+        document.querySelector('.btn-conectar').innerText = "✅ CONECTADO";
+        document.querySelector('.btn-conectar').style.borderColor = "#04d361";
+      } catch (err) {
+        alert("Erro ao conectar: " + err);
+      }
+    }
+
+    async function enviarComando(caractere, elementoId) {
+      if (!writer) {
+        alert("Por favor, conecte o Arduino primeiro!");
+        return;
+      }
+
+      // Se a sirene estiver ligada, não permite ligar leds individuais
+      if (sireneAtiva && elementoId !== 'sirene') return;
+
+      // Alterna a classe de brilho visual na tela
+      if(elementoId && elementoId !== 'sirene') {
+        const elemento = document.getElementById(elementoId);
+        elemento.classList.toggle('ativo');
+      }
+
+      const data = new TextEncoder().encode(caractere);
+      await writer.write(data);
+    }
+
+    function toggleSirene() {
+      if (!writer) {
+        alert("Por favor, conecte o Arduino primeiro!");
+        return;
+      }
+
+      sireneAtiva = !sireneAtiva;
+      const btn = document.getElementById('btnSirene');
+      
+      // Reseta o visual de todos os leds se ligou a sirene
+      document.getElementById('btnRed').classList.remove('ativo');
+      document.getElementById('btnYellow').classList.remove('ativo');
+      document.getElementById('btnGreen').classList.remove('ativo');
+
+      if (sireneAtiva) {
+        btn.classList.add('ativo');
+        btn.innerText = "🚨 PISCA ALERTA: ON";
+      } else {
+        btn.classList.remove('ativo');
+        btn.innerText = "🚨 PISCA ALERTA: OFF";
+      }
+
+      enviarComando('S', 'sirene');
+    }
+  </script>
+</body>
+</html>
